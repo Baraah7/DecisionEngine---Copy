@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(dataviz)",
+      "Bash(python -c \"import fastapi\")",
+      "Bash(python -c \"import jinja2\")",
+      "Bash(python -c \"import uvicorn\")",
+      "Bash(pip install *)",
+      "Bash(python -c ' *)",
+      "Bash(python -c \"import starlette, fastapi, jinja2; print\\('starlette', starlette.__version__\\); print\\('fastapi', fastapi.__version__\\); print\\('jinja2', jinja2.__version__\\)\")",
+      "Bash(python *)",
+      "PowerShell(Get-NetTCPConnection *)",
+      "Bash(curl -s -i -X POST -d \"action=assign_staff_1\" http://127.0.0.1:8000/override/5)",
+      "Bash(curl -s \"http://127.0.0.1:8000/?flash=Override%20applied&flash_customer=Lisa%20Wang\" -o /tmp/page2.html)",
+      "Bash(curl -s -D /tmp/export_headers.txt -o /tmp/export.json http://127.0.0.1:8000/export)",
+      "Bash(mkdir -p \"C:\\\\Users\\\\User\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-User-Documents-Code-DecisionEngine\\\\add25845-9200-47fa-b193-d885d8e66129\\\\scratchpad\")",
+      "Bash(curl -s -o \"C:\\\\Users\\\\User\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-User-Documents-Code-DecisionEngine\\\\add25845-9200-47fa-b193-d885d8e66129\\\\scratchpad\\\\export.json\" http://127.0.0.1:8000/export)",
+      "Bash(curl -s -i -X POST -d \"action=mark_completed\" http://127.0.0.1:8000/override/3)",
+      "Bash(curl -s -i -X POST -d \"action=escalate_manager\" http://127.0.0.1:8000/override/1)",
+      "Bash(curl -s -i -X POST -d \"action=delete_everything\" http://127.0.0.1:8000/override/2)",
+      "Bash(curl -s -i -X POST -d \"action=mark_completed\" http://127.0.0.1:8000/override/999)",
+      "Bash(curl -s http://127.0.0.1:8000/ -o /tmp/page3.html)"
+    ]
+  }
+}

@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Decision Engine — Request Dashboard</title>
+
+<!-- Tell Tailwind's CDN build to use a manual `.dark` class toggle instead of
+     only following the OS preference, so our dark-mode button works. -->
+<script>
+  tailwind = { config: { darkMode: "class" } };
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Apply the saved theme before first paint, to avoid a light/dark flash. -->
+<script>
+  (function () {
+    const saved = localStorage.getItem("theme");
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    if (saved === "dark" || (!saved && prefersDark)) {
+      document.documentElement.classList.add("dark");
+    }
+  })();
+</script>
+
+<style>
+  /* ---- Design tokens (light default, .dark overrides) --------------------
+     Status colors are fixed roles (good/warning/serious/critical) and are
+     never reused for anything else. Each status badge always ships with a
+     visible text label, so color is never the only signal. */
+  :root {
+    --surface-1: #fcfcfb;
+    --page: #f9f9f7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --muted: #898781;
+    --border: rgba(11, 11, 11, 0.10);
+    --hairline: #e1e0d9;
+
+    --good: #0ca30c;      --good-bg: #e3f6e3;
+    --warning: #b3790f;   --warning-bg: #fdf0d8;
+    --serious: #c85a34;   --serious-bg: #fbe4da;
+    --critical: #d03b3b;  --critical-bg: #fbe4e4;
+    --info: #2a78d6;      --info-bg: #e8f1fc;
+
+    --vip: #a4740a;   --vip-bg: #fdf3d9;
+    --new: #2a78d6;   --new-bg: #e8f1fc;
+    --regular: #6b6a66; --regular-bg: #eeeeec;
+    --completed: #128a5e; --completed-bg: #dbf3ea;
+  }
+  .dark {
+    --surface-1: #1a1a19;
+    --page: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --muted: #898781;
+    --border: rgba(255, 255, 255, 0.10);
+    --hairline: #2c2c2a;
+
+    --good: #0ca30c;      --good-bg: rgba(12, 163, 12, 0.16);
+    --warning: #fab219;   --warning-bg: rgba(250, 178, 25, 0.16);
+    --serious: #ec835a;   --serious-bg: rgba(236, 131, 90, 0.16);
+    --critical: #e66767;  --critical-bg: rgba(230, 103, 103, 0.18);
+    --info: #3987e5;      --info-bg: rgba(57, 135, 229, 0.16);
+
+    --vip: #eda100;   --vip-bg: rgba(237, 161, 0, 0.16);
+    --new: #3987e5;   --new-bg: rgba(57, 135, 229, 0.16);
+    --regular: #c3c2b7; --regular-bg: rgba(195, 194, 183, 0.12);
+    --completed: #1baf7a; --completed-bg: rgba(27, 175, 122, 0.16);
+  }
+
+  body { background: var(--page); color: var(--text-primary); }
+
+  .card { background: var(--surface-1); border: 1px solid var(--border); }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: .375rem;
+    padding: .25rem .625rem; border-radius: 9999px;
+    font-size: .75rem; font-weight: 600; white-space: nowrap;
+  }
+  .badge-dot { width: .4rem; height: .4rem; border-radius: 9999px; background: currentColor; }
+
+  .badge-good     { background: var(--good-bg);     color: var(--good); }
+  .badge-info     { background: var(--info-bg);     color: var(--info); }
+  .badge-assigned { background: var(--info-bg);     color: var(--info); }
+  .badge-warning  { background: var(--warning-bg);  color: var(--warning); }
+  .badge-serious  { background: var(--serious-bg);  color: var(--serious); }
+  .badge-critical { background: var(--critical-bg); color: var(--critical); }
+
+  .badge-vip     { background: var(--vip-bg);     color: var(--vip); }
+  .badge-new     { background: var(--new-bg);     color: var(--new); }
+  .badge-regular { background: var(--regular-bg); color: var(--regular); }
+  .badge-completed { background: var(--completed-bg); color: var(--completed); }
+
+  .badge-button { border: none; cursor: pointer; }
+
+  .row-clickable { cursor: pointer; }
+  .row-clickable:hover { background: var(--border); }
+</style>
+</head>
+
+<body class="min-h-screen">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+  <!-- ============================== Header ============================== -->
+  <div class="flex items-start justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-semibold" style="color:var(--text-primary)">Decision Engine</h1>
+      <p class="text-sm mt-1" style="color:var(--text-secondary)">
+        Live triage dashboard — {{ stats.total }} incoming requests
+      </p>
+    </div>
+    <div class="flex items-center gap-2 shrink-0">
+      <a
+        href="/export"
+        class="card rounded-lg px-3 py-2 text-sm font-medium inline-block"
+        style="color:var(--text-primary)"
+      >📊 Export Report</a>
+      <button
+        id="theme-toggle"
+        class="card rounded-lg px-3 py-2 text-sm font-medium"
+        style="color:var(--text-primary)"
+        onclick="toggleTheme()"
+      >
+        <span id="theme-toggle-label">🌙 Dark mode</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ============================ Flash message ============================ -->
+  {% if flash %}
+  <div id="flash-banner" class="rounded-lg px-4 py-3 mb-6 flex items-center justify-between gap-2 text-sm"
+       style="background:var(--good-bg); border:1px solid var(--good)">
+    <span style="color:var(--good)">
+      <strong>✅ {{ flash }}</strong>{% if flash_customer %} — {{ flash_customer }}{% endif %}
+    </span>
+    <button onclick="document.getElementById('flash-banner').remove()" class="text-lg leading-none" style="color:var(--good)">&times;</button>
+  </div>
+  <script>
+    setTimeout(() => { const b = document.getElementById("flash-banner"); if (b) b.remove(); }, 5000);
+  </script>
+  {% endif %}
+
+  <!-- ========================= Edge-case banner =========================== -->
+  {% set edge_cases = requests | selectattr('is_edge_case') | list %}
+  {% if edge_cases %}
+  <div class="badge-critical rounded-lg px-4 py-3 mb-6 flex flex-wrap items-center gap-2 text-sm"
+       style="background:var(--critical-bg); border:1px solid var(--critical)">
+    <span class="font-semibold" style="color:var(--critical)">⚠ Attention needed:</span>
+    <span style="color:var(--text-primary)">
+      {% for e in edge_cases %}
+        {{ e.customer }}
+        {% if e.edge_case_type == 'manager_unavailable' %}
+          is <strong>pending manager approval</strong> (manager unavailable — {{ e.escalation_timeout }} escalation timeout)
+        {% elif e.edge_case_type == 'queue' %}
+          is <strong>queued</strong> — both staff busy, est. wait {{ e.wait_time }}
+        {% endif %}
+        {% if not loop.last %}&nbsp;·&nbsp;{% endif %}
+      {% endfor %}
+    </span>
+  </div>
+  {% endif %}
+
+  <!-- ============================ Stat tiles ============================ -->
+  <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+    <div class="card rounded-xl p-4">
+      <div class="text-xs" style="color:var(--muted)">Total requests</div>
+      <div class="text-2xl font-semibold mt-1" style="color:var(--text-primary)">{{ stats.total }}</div>
+    </div>
+    <div class="card rounded-xl p-4">
+      <div class="text-xs" style="color:var(--muted)">Auto-handled</div>
+      <div class="text-2xl font-semibold mt-1" style="color:var(--good)">{{ stats.auto_approved }}</div>
+    </div>
+    <div class="card rounded-xl p-4">
+      <div class="text-xs" style="color:var(--muted)">Assigned</div>
+      <div class="text-2xl font-semibold mt-1" style="color:var(--info)">{{ stats.assigned }}</div>
+    </div>
+    <div class="card rounded-xl p-4">
+      <div class="text-xs" style="color:var(--muted)">Pending manager</div>
+      <div class="text-2xl font-semibold mt-1" style="color:var(--critical)">{{ stats.pending_manager }}</div>
+    </div>
+    <div class="card rounded-xl p-4">
+      <div class="text-xs" style="color:var(--muted)">Queued</div>
+      <div class="text-2xl font-semibold mt-1" style="color:var(--warning)">{{ stats.queued }}</div>
+    </div>
+  </div>
+
+  <!-- ============================== Filters ============================== -->
+  <div class="card rounded-xl p-4 mb-6 flex flex-wrap items-center gap-3">
+    <div class="flex items-center gap-2">
+      <label class="text-xs font-medium" style="color:var(--text-secondary)">Type</label>
+      <select id="filter-type" onchange="applyFilters()"
+        class="text-sm rounded-md border-0 ring-1 ring-inset px-2 py-1.5"
+        style="background:var(--surface-1); color:var(--text-primary); box-shadow:inset 0 0 0 1px var(--border)">
+        <option value="all">All</option>
+        <option value="vip">VIP</option>
+        <option value="new">New</option>
+        <option value="regular">Regular</option>
+      </select>
+    </div>
+    <div class="flex items-center gap-2">
+      <label class="text-xs font-medium" style="color:var(--text-secondary)">Status</label>
+      <select id="filter-status" onchange="applyFilters()"
+        class="text-sm rounded-md border-0 ring-1 ring-inset px-2 py-1.5"
+        style="background:var(--surface-1); color:var(--text-primary); box-shadow:inset 0 0 0 1px var(--border)">
+        <option value="all">All</option>
+        {% for key in status_styles.keys() %}
+        <option value="{{ key }}">{{ key }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="flex items-center gap-2">
+      <label class="text-xs font-medium" style="color:var(--text-secondary)">Sort by</label>
+      <select id="sort-by" onchange="applyFilters()"
+        class="text-sm rounded-md border-0 ring-1 ring-inset px-2 py-1.5"
+        style="background:var(--surface-1); color:var(--text-primary); box-shadow:inset 0 0 0 1px var(--border)">
+        <option value="id">Request order</option>
+        <option value="amount">Amount</option>
+        <option value="customer">Customer name</option>
+      </select>
+    </div>
+    <label class="flex items-center gap-2 text-sm ml-auto cursor-pointer" style="color:var(--text-primary)">
+      <input type="checkbox" id="filter-vip-only" onchange="applyFilters()" class="rounded" />
+      VIP only
+    </label>
+  </div>
+
+  <!-- =============================== Table ================================ -->
+  <div class="card rounded-xl overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left" style="min-width:900px">
+        <thead>
+          <tr class="border-b" style="border-color:var(--hairline)">
+            {% for h in ["Customer", "Type", "Request", "Amount", "Status", "Decision", "Assigned To", "Actions"] %}
+            <th class="px-4 py-3 font-medium" style="color:var(--muted)">{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody id="request-tbody">
+          {% for r in requests %}
+          {% set cts = customer_type_styles[r.customer_type] %}
+          {% set ss = status_styles[r.status] %}
+          <tr
+            class="row-clickable border-b"
+            style="border-color:var(--hairline)"
+            data-id="{{ r.id }}"
+            data-customer-type="{{ r.customer_type }}"
+            data-status="{{ r.status }}"
+            data-amount="{{ r.amount }}"
+            data-customer="{{ r.customer }}"
+            onclick="openModal({{ r.id }})"
+          >
+            <td class="px-4 py-3 font-medium" style="color:var(--text-primary)">{{ r.customer }}</td>
+            <td class="px-4 py-3">
+              <span class="badge badge-{{ cts.color }}">
+                <span class="badge-dot"></span>{{ cts.label }}
+              </span>
+            </td>
+            <td class="px-4 py-3 max-w-xs truncate" style="color:var(--text-secondary)" title="{{ r.request_text }}">
+              <span class="capitalize font-medium" style="color:var(--text-primary)">{{ r.request_type }}</span>
+              — {{ r.request_text }}
+            </td>
+            <td class="px-4 py-3" style="color:var(--text-primary)">
+              {% if r.amount and r.amount > 0 %}${{ "%.2f"|format(r.amount) }}{% else %}—{% endif %}
+            </td>
+            <td class="px-4 py-3">
+              <span class="badge badge-{{ ss.color }}">
+                <span class="badge-dot"></span>{{ ss.label }}
+                {% if r.is_auto %}· auto{% endif %}
+              </span>
+            </td>
+            <td class="px-4 py-3" style="color:var(--text-secondary)">{{ r.decision }}</td>
+            <td class="px-4 py-3" style="color:var(--text-secondary)">{{ r.assigned_to }}</td>
+            <td class="px-4 py-3" onclick="event.stopPropagation()">
+              <button
+                class="badge badge-button badge-info"
+                onclick="openModal({{ r.id }})"
+              >🔧 Override</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p id="no-results" class="hidden text-center text-sm py-8" style="color:var(--muted)">
+        No requests match the current filters.
+      </p>
+    </div>
+  </div>
+
+  <!-- ======================= Staff / manager status ======================= -->
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6">
+    {% for s in staff %}
+    <div class="card rounded-xl p-4 flex items-center justify-between">
+      <span class="text-sm font-medium" style="color:var(--text-primary)">{{ s.name }}</span>
+      {% if s.busy %}
+      <span class="badge badge-warning"><span class="badge-dot"></span>Busy</span>
+      {% else %}
+      <span class="badge badge-good"><span class="badge-dot"></span>Available</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+    <div class="card rounded-xl p-4 flex items-center justify-between">
+      <span class="text-sm font-medium" style="color:var(--text-primary)">{{ manager.name }} (Manager)</span>
+      {% if manager.available %}
+      <span class="badge badge-good"><span class="badge-dot"></span>Available</span>
+      {% else %}
+      <span class="badge badge-critical"><span class="badge-dot"></span>Unavailable</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <p class="text-xs mt-6" style="color:var(--muted)">
+    Auto-approve rule: refunds under $100 for regular/VIP customers are approved automatically, no manual review.
+  </p>
+
+  <!-- ======================= Improvement 1: Decision History ======================= -->
+  <div class="card rounded-xl overflow-hidden mt-6">
+    <div class="px-4 py-3 border-b flex items-center justify-between" style="border-color:var(--hairline)">
+      <h2 class="text-sm font-semibold" style="color:var(--text-primary)">Decision History</h2>
+      <span class="text-xs" style="color:var(--muted)">{{ decision_history|length }} entries · most recent first</span>
+    </div>
+    <div class="overflow-auto" style="max-height: 20rem">
+      <table class="w-full text-sm text-left" style="min-width:900px">
+        <thead>
+          <tr class="border-b" style="border-color:var(--hairline)">
+            {% for h in ["Timestamp", "Request ID", "Customer", "Action", "Assigned To", "Reasoning"] %}
+            <th class="px-4 py-2 font-medium sticky top-0" style="color:var(--muted); background:var(--surface-1)">{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for h in decision_history %}
+          <tr class="border-b" style="border-color:var(--hairline)">
+            <td class="px-4 py-2 whitespace-nowrap" style="color:var(--text-secondary)">{{ h.timestamp }}</td>
+            <td class="px-4 py-2" style="color:var(--text-primary)">#{{ h.request_id }}</td>
+            <td class="px-4 py-2 font-medium" style="color:var(--text-primary)">{{ h.customer }}</td>
+            <td class="px-4 py-2">
+              <span style="color:var(--text-secondary)">{{ h.action }}</span>
+              {% if h.tag == 'MANUAL_OVERRIDE' %}
+              <span class="badge badge-warning ml-1"><span class="badge-dot"></span>MANUAL_OVERRIDE</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-2" style="color:var(--text-secondary)">{{ h.assigned_to }}</td>
+            <td class="px-4 py-2 max-w-sm truncate" style="color:var(--text-secondary)" title="{{ h.reasoning }}">{{ h.reasoning }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ Detail modals ============================ -->
+{% for r in requests %}
+{% set cts = customer_type_styles[r.customer_type] %}
+{% set ss = status_styles[r.status] %}
+<div id="modal-{{ r.id }}" class="hidden fixed inset-0 z-50 items-center justify-center p-4" style="background:rgba(0,0,0,0.5)" onclick="if(event.target===this) closeModal({{ r.id }})">
+  <div class="card rounded-2xl max-w-lg w-full p-6" onclick="event.stopPropagation()">
+    <div class="flex items-start justify-between mb-4">
+      <div>
+        <h2 class="text-lg font-semibold" style="color:var(--text-primary)">{{ r.customer }}</h2>
+        <div class="flex items-center gap-2 mt-1">
+          <span class="badge badge-{{ cts.color }}"><span class="badge-dot"></span>{{ cts.label }}</span>
+          <span class="badge badge-{{ ss.color }}"><span class="badge-dot"></span>{{ ss.label }}{% if r.is_auto %} · auto{% endif %}</span>
+        </div>
+      </div>
+      <button onclick="closeModal({{ r.id }})" class="text-xl leading-none" style="color:var(--muted)">&times;</button>
+    </div>
+
+    <dl class="grid grid-cols-2 gap-3 text-sm mb-4">
+      <div>
+        <dt style="color:var(--muted)">Request type</dt>
+        <dd class="capitalize font-medium" style="color:var(--text-primary)">{{ r.request_type }}</dd>
+      </div>
+      <div>
+        <dt style="color:var(--muted)">Amount</dt>
+        <dd class="font-medium" style="color:var(--text-primary)">
+          {% if r.amount and r.amount > 0 %}${{ "%.2f"|format(r.amount) }}{% else %}—{% endif %}
+        </dd>
+      </div>
+      <div>
+        <dt style="color:var(--muted)">Action taken</dt>
+        <dd class="font-medium" style="color:var(--text-primary)">{{ r.decision }}</dd>
+      </div>
+      <div>
+        <dt style="color:var(--muted)">Assigned to</dt>
+        <dd class="font-medium" style="color:var(--text-primary)">{{ r.assigned_to }}</dd>
+      </div>
+      {% if r.wait_time %}
+      <div>
+        <dt style="color:var(--muted)">Estimated wait</dt>
+        <dd class="font-medium" style="color:var(--warning)">{{ r.wait_time }}</dd>
+      </div>
+      {% endif %}
+      {% if r.escalation_timeout %}
+      <div>
+        <dt style="color:var(--muted)">Escalation timeout</dt>
+        <dd class="font-medium" style="color:var(--critical)">{{ r.escalation_timeout }}</dd>
+      </div>
+      {% endif %}
+    </dl>
+
+    <div class="mb-4">
+      <dt class="text-sm mb-1" style="color:var(--muted)">Original request</dt>
+      <dd class="text-sm" style="color:var(--text-secondary)">{{ r.request_text }}</dd>
+    </div>
+
+    <div class="rounded-lg p-3" style="background:var(--info-bg)">
+      <div class="text-xs font-semibold mb-1" style="color:var(--info)">Why this decision?</div>
+      <div class="text-sm" style="color:var(--text-primary)">{{ r.reasoning }}</div>
+    </div>
+
+    {% if r.is_edge_case %}
+    <div class="rounded-lg p-3 mt-3" style="background:var(--critical-bg); border:1px solid var(--critical)">
+      <div class="text-xs font-semibold" style="color:var(--critical)">⚠ Edge case handled</div>
+      <div class="text-sm mt-1" style="color:var(--text-primary)">
+        {% if r.edge_case_type == 'manager_unavailable' %}
+          Manager unavailable for an approval over $100 — held as "Pending Manager" with a timeout-based escalation path.
+        {% elif r.edge_case_type == 'queue' %}
+          Both staff members were busy — request queued with a visible wait-time estimate instead of being dropped.
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Improvement 2: Manual Override (human-in-the-loop) -->
+    <form method="post" action="/override/{{ r.id }}" class="rounded-lg p-3 mt-3" style="background:var(--border)">
+      <div class="text-xs font-semibold mb-2" style="color:var(--text-primary)">🔧 Manual override</div>
+      <div class="flex flex-wrap items-center gap-2">
+        <select name="action" class="text-sm rounded-md px-2 py-1.5 flex-1 min-w-[10rem]"
+          style="background:var(--surface-1); color:var(--text-primary); box-shadow:inset 0 0 0 1px var(--border)">
+          <option value="assign_staff_1">Assign to {{ staff[0].name }}</option>
+          <option value="assign_staff_2">Assign to {{ staff[1].name }}</option>
+          <option value="escalate_manager">Escalate to manager</option>
+          <option value="mark_completed">Mark as completed</option>
+        </select>
+        <button type="submit" class="badge badge-button badge-info">Apply override</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endfor %}
+
+<script>
+  function toggleTheme() {
+    const root = document.documentElement;
+    const isDark = root.classList.toggle("dark");
+    localStorage.setItem("theme", isDark ? "dark" : "light");
+    document.getElementById("theme-toggle-label").textContent = isDark ? "☀️ Light mode" : "🌙 Dark mode";
+  }
+  // Sync the button label with whatever theme was applied on load.
+  document.addEventListener("DOMContentLoaded", () => {
+    const isDark = document.documentElement.classList.contains("dark");
+    document.getElementById("theme-toggle-label").textContent = isDark ? "☀️ Light mode" : "🌙 Dark mode";
+  });
+
+  function openModal(id) {
+    document.getElementById(`modal-${id}`).classList.remove("hidden");
+    document.getElementById(`modal-${id}`).classList.add("flex");
+  }
+  function closeModal(id) {
+    document.getElementById(`modal-${id}`).classList.add("hidden");
+    document.getElementById(`modal-${id}`).classList.remove("flex");
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      document.querySelectorAll('[id^="modal-"]').forEach((m) => {
+        m.classList.add("hidden");
+        m.classList.remove("flex");
+      });
+    }
+  });
+
+  // Client-side filter/sort — everything needed already lives in the DOM
+  // as data-* attributes on each row, so no extra round trip is needed.
+  function applyFilters() {
+    const type = document.getElementById("filter-type").value;
+    const status = document.getElementById("filter-status").value;
+    const sortBy = document.getElementById("sort-by").value;
+    const vipOnly = document.getElementById("filter-vip-only").checked;
+
+    const tbody = document.getElementById("request-tbody");
+    const rows = Array.from(tbody.querySelectorAll("tr"));
+    let visibleCount = 0;
+
+    rows.forEach((row) => {
+      const rowType = row.dataset.customerType;
+      const rowStatus = row.dataset.status;
+      let visible = true;
+      if (type !== "all" && rowType !== type) visible = false;
+      if (status !== "all" && rowStatus !== status) visible = false;
+      if (vipOnly && rowType !== "vip") visible = false;
+      row.style.display = visible ? "" : "none";
+      if (visible) visibleCount++;
+    });
+
+    document.getElementById("no-results").classList.toggle("hidden", visibleCount > 0);
+
+    // Sort visible + hidden rows together, then re-append in order.
+    rows.sort((a, b) => {
+      if (sortBy === "amount") return parseFloat(b.dataset.amount) - parseFloat(a.dataset.amount);
+      if (sortBy === "customer") return a.dataset.customer.localeCompare(b.dataset.customer);
+      return parseInt(a.dataset.id) - parseInt(b.dataset.id);
+    });
+    rows.forEach((row) => tbody.appendChild(row));
+  }
+</script>
+</body>
+</html>

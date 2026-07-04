@@ -18,12 +18,31 @@ uvicorn main:app --reload
 
 Then open http://127.0.0.1:8000/
 
+## Deploy (free, live link)
+
+This app has a real Python backend (manual override + export routes), so it
+needs a host that runs Python — not static hosting like GitHub Pages.
+[Render](https://render.com) has a free tier and reads `render.yaml`
+automatically:
+
+1. Push this repo to GitHub (already done if you're reading this from the repo).
+2. Go to [render.com](https://render.com) → **New** → **Blueprint** → connect
+   this GitHub repo. Render detects `render.yaml` and configures the build/start
+   commands automatically.
+3. Click **Apply** / **Create**. After the build finishes you'll get a public
+   URL like `https://decision-engine.onrender.com` — share that link directly.
+
+(`Procfile` + `runtime.txt` are included too, for Railway/Heroku-style hosts
+that don't read `render.yaml`.)
+
 ## Project structure
 
 ```
 main.py                        # FastAPI app, decision engine, all routes
 templates/index.html           # Single-page dashboard (Tailwind via CDN)
 requirements.txt
+render.yaml                    # Render deploy config (build/start commands)
+Procfile / runtime.txt         # Deploy config for Railway/Heroku-style hosts
 .claude/skills/self-review/    # Project skill: audits this app against the
   skill.md                     # challenge requirements and generates a
                                 # PASS/FAIL report
